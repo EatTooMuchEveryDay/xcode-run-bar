@@ -194,6 +194,15 @@ private struct WorkspaceRowView: View {
             .buttonStyle(RowIconButtonStyle())
 
             Button {
+                controller.stopWorkspace(path: session.path)
+            } label: {
+                Image(systemName: "stop.fill")
+            }
+            .help("Stop")
+            .buttonStyle(RowIconButtonStyle())
+            .opacity(stopOpacity)
+
+            Button {
                 controller.runWorkspace(path: session.path)
             } label: {
                 Image(systemName: runButtonSymbolName)
@@ -202,15 +211,6 @@ private struct WorkspaceRowView: View {
             .buttonStyle(RowIconButtonStyle())
             .disabled(!canRun)
             .opacity(canRun ? 1 : 0.35)
-
-            Button {
-                controller.stopWorkspace(path: session.path)
-            } label: {
-                Image(systemName: "stop.fill")
-            }
-            .help("Stop")
-            .buttonStyle(RowIconButtonStyle())
-            .opacity(stopOpacity)
         }
         .padding(.leading, 8)
         .padding(.trailing, 14)
