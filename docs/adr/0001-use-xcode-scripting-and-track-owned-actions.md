@@ -1,0 +1,3 @@
+# Use Xcode scripting and track only owned actions
+
+xcode-run-bar uses Xcode's scripting interface through a thin Scripting Bridge wrapper to list open workspace documents and send Focus, Run, and Stop commands. It does not use `xcodebuild` because the goal is to control already-open Xcode workspaces with their current scheme and destination, and it does not use Accessibility because UI automation would add a fragile permission surface. The app only reliably tracks actions it starts itself; actions started directly in Xcode are treated as idle in the first version because Xcode scripting does not provide a reliable global action state for them.

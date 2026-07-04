@@ -1,0 +1,7 @@
+.build/
+.build-fresh/
+dist/
+DerivedData/
+.DS_Store
+xcuserdata/
+*.xcuserstate
