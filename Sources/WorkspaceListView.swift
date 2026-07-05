@@ -73,8 +73,10 @@ struct WorkspaceListView: View {
         switch state {
         case .ready(let sessions):
             visibleRows = min(max(CGFloat(sessions.count), minVisibleRows), maxVisibleRows)
-        case .loading, .xcodeNotRunning, .noWorkspaces, .automationPermissionNeeded, .failed:
+        case .loading, .xcodeNotRunning, .noWorkspaces, .failed:
             visibleRows = minVisibleRows
+        case .automationPermissionNeeded:
+            visibleRows = 3
         }
         return visibleRows * rowSlotHeight
     }
