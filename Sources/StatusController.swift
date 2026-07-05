@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-final class StatusController: ObservableObject {
+final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
     @Published var listState: WorkspaceListState = .loading
 
     private struct TrackedAction {
@@ -13,8 +13,9 @@ final class StatusController: ObservableObject {
     private let store: WorkspaceStore
     private let xcode: XcodeIntegration
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private var panel: NSPanel?
-    private var eventMonitor: Any?
+    private let menu = NSMenu()
+    private let menuItem = NSMenuItem()
+    private var menuHostingView: NSHostingView<WorkspacePanelView>?
     private var snapshotsByPath: [String: WorkspaceSnapshot] = [:]
     private var rowStates: [String: WorkspaceRowState] = [:]
     private var trackedActions: [String: TrackedAction] = [:]
@@ -23,6 +24,7 @@ final class StatusController: ObservableObject {
     init(store: WorkspaceStore, xcode: XcodeIntegration) {
         self.store = store
         self.xcode = xcode
+        super.init()
     }
 
     func start() {
@@ -162,57 +164,26 @@ final class StatusController: ObservableObject {
     }
 
     private func configureStatusItem() {
-        statusItem.button?.target = self
-        statusItem.button?.action = #selector(togglePopover(_:))
-        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        menu.delegate = self
+        menu.addItem(menuItem)
+        statusItem.menu = menu
     }
 
-    @objc private func togglePopover(_ sender: NSStatusBarButton) {
-        if panel?.isVisible == true {
-            closePanel()
-        } else {
-            refreshWorkspaces()
-            showPanel(relativeTo: sender)
-        }
+    func menuWillOpen(_ menu: NSMenu) {
+        refreshWorkspaces()
+        updateMenuContent()
     }
 
-    private func showPanel(relativeTo sender: NSStatusBarButton) {
+    private func updateMenuContent() {
         let contentSize = WorkspacePanelView.contentSize(for: listState)
-        let screenRect = sender.window?.convertToScreen(sender.convert(sender.bounds, to: nil)) ?? .zero
-        let origin = NSPoint(
-            x: screenRect.midX - contentSize.width / 2,
-            y: screenRect.minY - contentSize.height - 6
-        )
-
-        let panel = NSPanel(
-            contentRect: NSRect(origin: origin, size: contentSize),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = true
-        panel.level = .floating
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentViewController = NSHostingController(rootView: WorkspacePanelView(controller: self))
-        panel.orderFrontRegardless()
-        self.panel = panel
-
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.closePanel()
-            }
-        }
-    }
-
-    private func closePanel() {
-        panel?.close()
-        panel = nil
-
-        if let eventMonitor {
-            NSEvent.removeMonitor(eventMonitor)
-            self.eventMonitor = nil
+        if let menuHostingView {
+            menuHostingView.rootView = WorkspacePanelView(controller: self)
+            menuHostingView.frame = NSRect(origin: .zero, size: contentSize)
+        } else {
+            let hostingView = NSHostingView(rootView: WorkspacePanelView(controller: self))
+            hostingView.frame = NSRect(origin: .zero, size: contentSize)
+            menuHostingView = hostingView
+            menuItem.view = hostingView
         }
     }
 
@@ -286,6 +257,7 @@ final class StatusController: ObservableObject {
     private func mark(path: String, as state: WorkspaceRowState) {
         rowStates[path] = state
         updateVisibleRows()
+        updateMenuContent()
     }
 
     private func updateVisibleRows() {

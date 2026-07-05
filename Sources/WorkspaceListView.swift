@@ -3,48 +3,16 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct WorkspacePanelView: View {
-    static let arrowHeight: CGFloat = 10
-    static let cornerRadius: CGFloat = 14
-    static let strokeColor = Color.primary.opacity(0.06)
-
     @ObservedObject var controller: StatusController
 
     static func contentSize(for state: WorkspaceListState) -> NSSize {
-        let listSize = WorkspaceListView.contentSize(for: state)
-        return NSSize(width: listSize.width, height: listSize.height + arrowHeight)
+        WorkspaceListView.contentSize(for: state)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Color.clear
-                .frame(width: 18, height: Self.arrowHeight)
-
-            WorkspaceListView(controller: controller)
-        }
-        .frame(width: Self.contentSize(for: controller.listState).width, height: Self.contentSize(for: controller.listState).height)
-        .background(.thinMaterial, in: PanelShape(arrowHeight: Self.arrowHeight, cornerRadius: Self.cornerRadius))
-        .clipShape(PanelShape(arrowHeight: Self.arrowHeight, cornerRadius: Self.cornerRadius))
-        .overlay {
-            PanelShape(arrowHeight: Self.arrowHeight, cornerRadius: Self.cornerRadius)
-                .stroke(Self.strokeColor, lineWidth: 1)
-        }
-        .background(Color.clear)
-    }
-}
-
-private struct PanelShape: Shape {
-    let arrowHeight: CGFloat
-    let cornerRadius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        let arrowWidth: CGFloat = 18
-        let bodyRect = CGRect(x: rect.minX, y: rect.minY + arrowHeight, width: rect.width, height: rect.height - arrowHeight)
-        var path = Path(roundedRect: bodyRect, cornerRadius: cornerRadius)
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.midX + arrowWidth / 2, y: bodyRect.minY))
-        path.addLine(to: CGPoint(x: rect.midX - arrowWidth / 2, y: bodyRect.minY))
-        path.closeSubpath()
-        return path
+        WorkspaceListView(controller: controller)
+            .frame(width: Self.contentSize(for: controller.listState).width, height: Self.contentSize(for: controller.listState).height)
+            .background(Color.clear)
     }
 }
 
