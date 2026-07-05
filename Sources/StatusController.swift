@@ -19,6 +19,8 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
     private var snapshotsByPath: [String: WorkspaceSnapshot] = [:]
     private var rowStates: [String: WorkspaceRowState] = [:]
     private var trackedActions: [String: TrackedAction] = [:]
+    private let xcodeQueue = DispatchQueue(label: "xcode-run-bar.xcode")
+    private var refreshInProgress = false
     private var pollTimer: Timer?
 
     init(store: WorkspaceStore, xcode: XcodeIntegration) {
@@ -29,14 +31,44 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
 
     func start() {
         configureStatusItem()
+        updateMenuContent()
         updateMenuBarIcon()
     }
 
     func refreshWorkspaces() {
-        listState = .loading
+        applyRefreshResult(Result { try performXcode { try xcode.fetchWorkspaces() } })
+    }
 
-        do {
-            let snapshots = try xcode.fetchWorkspaces()
+    private func performXcode<T>(_ work: () throws -> T) rethrows -> T {
+        try xcodeQueue.sync(execute: work)
+    }
+
+    private func refreshWorkspacesAsync() {
+        guard !refreshInProgress else { return }
+        refreshInProgress = true
+
+        xcodeQueue.async { [weak self] in
+            guard let self else { return }
+
+            let result: Result<[WorkspaceSnapshot], Error>
+            do {
+                result = .success(try self.xcode.fetchWorkspaces())
+            } catch {
+                result = .failure(error)
+            }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.refreshInProgress = false
+                self.applyRefreshResult(result)
+                self.updateMenuContent()
+            }
+        }
+    }
+
+    private func applyRefreshResult(_ result: Result<[WorkspaceSnapshot], Error>) {
+        switch result {
+        case .success(let snapshots):
             guard !snapshots.isEmpty else {
                 snapshotsByPath = [:]
                 listState = .noWorkspaces
@@ -51,14 +83,14 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
                 session(from: snapshot, showPath: duplicateNames.contains(snapshot.name))
             }
             listState = .ready(sessions)
-        } catch XcodeIntegrationError.xcodeNotRunning {
+        case .failure(XcodeIntegrationError.xcodeNotRunning):
             NSLog("xcode-run-bar: refreshWorkspaces failed: xcodeNotRunning")
             snapshotsByPath = [:]
             listState = .xcodeNotRunning
-        } catch XcodeIntegrationError.automationPermissionNeeded {
+        case .failure(XcodeIntegrationError.automationPermissionNeeded):
             NSLog("xcode-run-bar: refreshWorkspaces failed: automationPermissionNeeded")
             listState = .automationPermissionNeeded
-        } catch {
+        case .failure(let error):
             let message = failureMessage(for: error)
             NSLog("xcode-run-bar: refreshWorkspaces failed: \(message)")
             listState = .failed(message)
@@ -68,7 +100,7 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
     func focusWorkspace(path: String) {
         guard let snapshot = snapshotsByPath[path] else { return }
         do {
-            try xcode.focus(snapshot.raw)
+            try performXcode { try xcode.focus(snapshot.raw) }
         } catch XcodeIntegrationError.automationPermissionNeeded {
             listState = .automationPermissionNeeded
         } catch {
@@ -92,7 +124,7 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
         mark(path: path, as: .starting)
 
         do {
-            let result = try xcode.run(snapshot.raw)
+            let result = try performXcode { try xcode.run(snapshot.raw) }
             trackedActions[path] = TrackedAction(result: result, stopRequested: false, pollFailureCount: 0)
             mark(path: path, as: .running)
             startPollingIfNeeded()
@@ -109,7 +141,7 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
         mark(path: path, as: .stopping)
 
         do {
-            try xcode.stop(snapshot.raw)
+            try performXcode { try xcode.stop(snapshot.raw) }
             scheduleRun(path: path, after: 0.8)
         } catch XcodeIntegrationError.automationPermissionNeeded {
             listState = .automationPermissionNeeded
@@ -124,7 +156,7 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
         mark(path: path, as: .stopping)
 
         do {
-            try xcode.stop(snapshot.raw)
+            try performXcode { try xcode.stop(snapshot.raw) }
             scheduleState(path: path, state: .idle, after: 1)
         } catch XcodeIntegrationError.automationPermissionNeeded {
             listState = .automationPermissionNeeded
@@ -170,14 +202,13 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        refreshWorkspaces()
         updateMenuContent()
+        refreshWorkspacesAsync()
     }
 
     private func updateMenuContent() {
         let contentSize = WorkspacePanelView.contentSize(for: listState)
         if let menuHostingView {
-            menuHostingView.rootView = WorkspacePanelView(controller: self)
             menuHostingView.frame = NSRect(origin: .zero, size: contentSize)
         } else {
             let hostingView = NSHostingView(rootView: WorkspacePanelView(controller: self))
@@ -196,13 +227,13 @@ final class StatusController: NSObject, ObservableObject, NSMenuDelegate {
 
         for (path, tracked) in trackedActions {
             do {
-                let completed = try xcode.actionCompleted(tracked.result)
+                let completed = try performXcode { try xcode.actionCompleted(tracked.result) }
                 if tracked.pollFailureCount > 0 {
                     trackedActions[path] = TrackedAction(result: tracked.result, stopRequested: tracked.stopRequested, pollFailureCount: 0)
                 }
                 guard completed else { continue }
 
-                let status = try xcode.actionStatus(tracked.result)
+                let status = try performXcode { try xcode.actionStatus(tracked.result) }
                 trackedActions[path] = nil
 
                 switch status {
