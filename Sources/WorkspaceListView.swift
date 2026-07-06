@@ -188,12 +188,6 @@ private struct WorkspaceRowView: View {
         .background(isHovering ? Color.primary.opacity(0.06) : Color.clear)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .onDrag {
-            draggingPath = session.path
-            return NSItemProvider(object: session.path as NSString)
-        } preview: {
-            dragPreview
-        }
     }
 
     private var dragHandle: some View {
@@ -203,6 +197,12 @@ private struct WorkspaceRowView: View {
             .frame(width: 22, height: 34)
             .contentShape(Rectangle())
             .opacity(isHovering ? 1 : 0)
+            .onDrag {
+                draggingPath = session.path
+                return NSItemProvider(object: session.path as NSString)
+            } preview: {
+                dragPreview
+            }
     }
 
     private var dragPreview: some View {
